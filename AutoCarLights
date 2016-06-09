@@ -1,0 +1,288 @@
+#include "mbed.h"
+#include "rtos.h"
+
+
+DigitalOut firstLed(D2);
+DigitalOut secondLed(D3);
+DigitalOut thirdLed(D4);
+DigitalOut fourthLed(D5);                   // Initializing LEDs
+DigitalOut fifthLed(D6);
+DigitalOut sixthLed(D7);
+
+DigitalIn button1(D15);
+DigitalIn button2(D14);
+
+AnalogIn Sense1(A1);                    //Initializing Phototransistor
+
+int lightsType = 1;
+bool autoMode = true;
+
+
+DigitalOut outs[] = { firstLed, secondLed,thirdLed,fourthLed,fifthLed,sixthLed };
+
+
+I2C i2c(I2C_SDA, I2C_SCL);
+
+DigitalOut myled(LED1);
+
+Serial pc(SERIAL_TX, SERIAL_RX);
+
+int address = 96;
+char data_buff[10];
+int tmp;
+int FindAddress(void) {
+    int i = 1;
+    int int_address = 0;
+    data_buff[0] = 0x20;
+
+    while (i) {
+        i = i2c.write(int_address, data_buff, 1, false);
+        int_address++;
+    }
+    int_address--;
+    data_buff[0] = 0x0;
+    i2c.read(int_address, data_buff, 1, false);
+    return(int_address);
+}
+
+int ReadID(void) {
+    data_buff[0] = 0x20;
+
+    i2c.write(address, data_buff, 1, false);
+
+    data_buff[0] = 0x0;
+    i2c.read(address, data_buff, 1, false);
+
+    return(data_buff[0]);
+}
+int ReadFRM(void) {
+    data_buff[0] = 0x21;
+
+    i2c.write(address, data_buff, 1, false);
+
+    data_buff[0] = 0x0;
+    i2c.read(address, data_buff, 1, false);
+
+    return(data_buff[0]);
+}
+int ReadBtn(void) {
+    data_buff[0] = 0x5;
+
+    i2c.write(address, data_buff, 1, false);
+
+    data_buff[0] = 0x0;
+    i2c.read(address, data_buff, 1, false);
+
+    return(data_buff[0]);
+}
+void Clr_scr() {
+    data_buff[0] = 0x60;
+
+    i2c.write(address, data_buff, 1, false);
+}
+void Write_to_scr(int y, int x, char d) {
+    data_buff[0] = 0x61;
+    data_buff[1] = y;
+    data_buff[2] = x;
+    data_buff[3] = d;
+
+    i2c.write(address, data_buff, 4, false);
+}
+void Str_to_scr(int y, int x, char* c_str, int len) {
+    int i = 0;
+    for (i = 0; i < len; i++) {
+        Write_to_scr(y, x + i, c_str[i]);
+        wait(0.05); //need time to write character
+    }
+}
+
+void btnFunc(void const *args) {
+    tmp = ReadBtn();
+
+
+}
+
+void manageLEDS(void const *args) {
+    if (autoMode == true) {      // ALL LIGHTS ARE ON
+        double lightPower = Sense1.read_u16()*3.3 / 4095;          //Variable that reads the voltage from the phototransistor
+        if (lightPower < 48 && lightPower > 20) {                      //If voltage is between 20 and 40
+
+            for (int i = 0; i < 2; i++) {                               // 2 LEDs are ON
+                outs[i] = 0;
+            }
+            for (int i = 2; i < 6; i++) {
+                outs[i] = 1;
+            }
+            printf("DAY LIGHTS");                           //Prints the type of Lights
+
+        }
+        else if (lightPower < 0.65) {                          //If voltage is less than 20
+
+            for (int i = 0; i < 6; i++) {                          //all LEDs are ON
+                outs[i] = 0;
+            }
+            printf("HIGH LIGHTS");
+
+        }
+        else {                                             // The last case if volgate is higher than 40
+
+            for (int i = 0; i < 4; i++) {                          // 4 LEDs are ON
+                outs[i] = 0;
+            }
+            for (int i = 4; i < 6; i++) {
+                outs[i] = 1;
+            }
+
+
+            printf("LOW LIGHTS");
+        }
+
+        printf("\n ADC Val : %f", (Sense1.read_u16())*3.3 / 4095);
+
+
+    }
+    else if (autoMode == false && lightsType == 0) {       //Manual Mode -> Rear Lights -> 1 LEDs ON
+        for (int i = 0; i < 1; i++) {
+            outs[i] = 0;
+        }
+        for (int i = 1; i < 6; i++) {
+            outs[i] = 1;
+        }
+    }
+    else if (autoMode == false && lightsType == 1) {       //Manual Mode -> Day Lights -> 2 LEDs ON
+        for (int i = 0; i < 2; i++) {
+            outs[i] = 0;
+        }
+        for (int i = 2; i < 6; i++) {
+            outs[i] = 1;
+        }
+    }
+    else if (autoMode == false && lightsType == 2) { //Manual Mode -> Low Lights -> 3 LEDs ON
+        for (int i = 0; i < 4; i++) {
+            outs[i] = 0;
+        }
+        for (int i = 4; i < 6; i++) {
+            outs[i] = 1;
+        }
+    }
+    else if (autoMode == false && lightsType == 3) { //Manual Mode -> High Lights -> 4 LEDs ON
+        for (int i = 0; i < 6; i++) {
+            outs[i] = 0;
+        }
+    }
+
+}
+
+int main()
+{
+
+    char b_buf[20];
+
+    memset(b_buf, 0, 20);
+
+    wait(1);  //need time to boot display
+    pc.printf("Hello !\r\n");
+
+    tmp = FindAddress();
+    pc.printf("Address:%d\r\n", tmp);
+    wait(0.2); myled = ~myled;
+
+    tmp = ReadID();
+    pc.printf("ID:%d\r\n", tmp);
+    wait(0.2); myled = ~myled;
+
+    tmp = ReadFRM();
+    pc.printf("FRM:%d\r\n", tmp);
+    wait(0.2); myled = ~myled;
+
+    Clr_scr();
+    wait(0.2); myled = ~myled;
+
+    Write_to_scr(2, 0, '1');
+    wait(0.2); myled = ~myled;
+
+    Str_to_scr(1, 0, "Hello", 5);
+    wait(0.2); myled = ~myled;
+
+    while (1) { //start infinite loop
+
+        Thread btnThread(btnFunc); //Thread waiting for button press
+
+        switch (tmp) {
+        case 14: //Button1 Pressed Switch Auto <-> Manual Mode
+
+            autoMode = !autoMode;
+            if (autoMode == true) {
+                Str_to_scr(1, 0, "Auto Mode  ", 11);
+            }
+            else {
+                Str_to_scr(1, 0, "Manual Mode", 11);
+            }
+            wait(0.2);
+            break;
+        case 13:    //Button2 Pressed Switch Rear <-> Day Lights
+
+
+            if (autoMode == false) {
+                if (lightsType == 1) {
+                    lightsType = 0;
+                    Str_to_scr(2, 0, "REAR", 4);
+                    wait(0.2);
+                    printf("Button pressed2");
+
+                }
+                else {
+                    lightsType = 1;
+                    Str_to_scr(2, 0, "DAY ", 4);
+                    wait(0.2);
+                    printf("Button pressed2");
+
+                }
+            }
+            break;
+        case 11:    //Button3 Pressed toggle dimmer Lights ON/OFF
+            if (autoMode == false) {
+                if (lightsType == 2) {
+                    lightsType = 1;
+                    Str_to_scr(2, 0, "DAY ", 4);
+                    wait(0.2);
+                    printf("Button pressed3");
+                }
+                else {
+                    lightsType = 2;
+                    Str_to_scr(2, 0, "LOW ", 4);
+                    wait(0.2);
+                    printf("Button pressed3");
+                }
+            }
+            break;
+        case 7:     //Button4 Pressed toggle head Lights ON/OFF
+
+
+
+            if (autoMode == false) {
+
+                if (lightsType == 3) {
+                    lightsType = 2;
+                    Str_to_scr(2, 0, "LOW ", 4);
+                    wait(0.2);
+                    printf("Button pressed4");
+                }
+                else {
+
+                    lightsType = 3;
+                    Str_to_scr(2, 0, "HIGH", 4);
+                    wait(0.2);
+                    printf("Button pressed4");
+                }
+            }
+            break;
+        } //end infinite loop
+
+
+        Thread LedManagerThread(manageLEDS); //Thread managing the LEDs
+    }
+
+
+
+}
